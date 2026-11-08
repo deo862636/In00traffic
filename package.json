@@ -1,0 +1,1 @@
+{"dependencies":{"playwright-core":"^1.49.0"},"description":"Network traffic capture for the Instagram signup page. Records HAR only. You fill the form and solve any CAPTCHA yourself.","license":"MIT","main":"capture.js","name":"in00traffic","scripts":{"setup":"bash setup.sh","start":"node capture.js"},"version":"1.0.0"}

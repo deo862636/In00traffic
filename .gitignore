@@ -1,0 +1,5 @@
+node_modules/
+out/
+*.har
+*.log
+.DS_Store
