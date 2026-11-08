@@ -12,6 +12,11 @@
 #   2. Node.js 18+ (Termux: pkg, macOS: brew, Linux: apt)
 #   3. Chromium (Termux: pkg, macOS: brew cask, Linux: apt)
 #   4. playwright-core (npm, inside the project folder)
+#   5. On Termux: a virtual display (Xvfb) + VNC, because a headed browser
+#      needs a screen and Termux has none — without it Chromium dies with
+#      "Missing X server or $DISPLAY". You view it with a VNC viewer app
+#      on your phone (localhost:5901). If that cannot start, the capture
+#      runs headless instead (page-load capture only) rather than crashing.
 #
 # IMPORTANT — Termux / Android:
 #   Playwright CANNOT download its own Chromium on Android
@@ -160,15 +165,98 @@ else
   fi
 fi
 
-# --- 5. Check the capture script ----------------------------------------------
+# --- 5. A screen for the browser (Termux only) ------------------------------
+# A headed browser needs a screen ($DISPLAY). Termux has none, so Chromium
+# dies with "Missing X server or $DISPLAY" — that is the error from the
+# last run. The fix: a VIRTUAL display (Xvfb) + VNC so you can SEE it.
+#   Xvfb :99  = a fake screen on display :99
+#   vncserver = lets a VNC viewer app on your phone show that screen
+# You need a VNC viewer app on your phone (for example "AVNC" from the
+# Play Store — free). Connect it to localhost:5901, no password on
+# first run (you will be asked to set one).
+# If this step cannot start a display, capture.js falls back to headless
+# on its own (page-load capture only) instead of crashing.
+DISPLAY_MODE="headless"
+if is_termux && [ -z "${DISPLAY:-}" ]; then
+  say "🖥️  Termux has no screen — setting up a virtual display (Xvfb + VNC)..."
+  pkg install -y x11-repo 2>&1 | tail -1 || true
+  pkg install -y xvfb tigervnc termux-x11-nightly 2>&1 | tail -1 || true
+  if have Xvfb; then
+    pkill -f "Xvfb :99" 2>/dev/null || true
+    Xvfb :99 -screen 0 1280x900x24 >/tmp/xvfb.log 2>&1 &
+    sleep 2
+    if have xdpyinfo && xdpyinfo -display :99 >/dev/null 2>&1; then
+      export DISPLAY=:99
+      DISPLAY_MODE="headed-vnc"
+      say "✅ Virtual display running on :99"
+    elif ps aux 2>/dev/null | grep -q "[X]vfb :99"; then
+      export DISPLAY=:99
+      DISPLAY_MODE="headed-vnc"
+      say "✅ Virtual display running on :99 (Xvfb started)"
+    else
+      say "⚠️ Xvfb did not start — will run headless instead (page-load capture only)."
+      say "   Log: tail /tmp/xvfb.log"
+    fi
+  else
+    say "⚠️ Xvfb is not installed — will run headless instead (page-load capture only)."
+    say "   To get a visible browser, run: pkg install x11-repo && pkg install xvfb tigervnc"
+  fi
+  if [ "$DISPLAY_MODE" = "headed-vnc" ]; then
+    if have vncserver; then
+      mkdir -p ~/.vnc
+      # First run asks for a VNC password — type one, remember it, it is
+      # only for YOUR phone, never share it.
+      if vncserver :1 -geometry 1280x900 -depth 24 -localhost no >/tmp/vnc.log 2>&1; then
+        sleep 1
+        # Only claim success if something is actually listening on 5901.
+        if (exec 3<>/dev/tcp/127.0.0.1/5901) 2>/dev/null; then
+          exec 3>&- 3<&-
+          say "✅ VNC running — open your VNC viewer app and connect to:"
+          say "   Address:  localhost:5901   (or 127.0.0.1:5901)"
+          say "   There you will SEE the Chromium window. Fill the form in it."
+        else
+          say "⚠️ VNC started but nothing is listening on port 5901."
+          say "   Check the log: tail /tmp/vnc.log"
+          say "   The virtual display :99 is still running — you can also"
+          say "   try the Termux:X11 app instead, then run with DISPLAY=:0."
+        fi
+      else
+        say "⚠️ vncserver failed to start. Check the log: tail /tmp/vnc.log"
+        say "   The virtual display :99 is still running. You can view it"
+        say "   with the Termux:X11 app instead, then run with DISPLAY=:0."
+      fi
+    else
+      say "⚠️ vncserver not found — the virtual display is running, but you"
+      say "   cannot see it without a VNC server. Install it with:"
+      say "     pkg install tigervnc"
+      say "   Then run setup.sh again."
+    fi
+  fi
+elif [ -n "${DISPLAY:-}" ]; then
+  DISPLAY_MODE="headed"
+  say "✅ Display found ($DISPLAY) — headed browser will open on it."
+else
+  say "ℹ️ No display — capture will run headless (page-load capture only)."
+fi
+
+# --- 6. Check the capture script ----------------------------------------------
 if [ ! -f capture.js ]; then echo "❌ ERROR: capture.js is still missing from $(pwd). Re-clone the repo and try again."; exit 1; fi
 node --check capture.js && say "✅ capture.js syntax OK."
 
-if [ "$INSTALL_ONLY" = "1" ]; then say "✅ Install only — done. Run with: node capture.js"; exit 0; fi
+if [ "$INSTALL_ONLY" = "1" ]; then
+  if [ "$DISPLAY_MODE" = "headed-vnc" ]; then say "✅ Install only — done. Virtual display :99 + VNC on localhost:5901 are running. Run with: DISPLAY=:99 node capture.js --headed"; else say "✅ Install only — done. Run with: node capture.js"; fi
+  exit 0
+fi
 
-say "🚀 Starting capture (headed browser — YOU fill the form)..."
-say "   When the confirmation-code screen appears, STOP and close the browser."
-CHROMIUM_PATH="$CHROMIUM_BIN" PLAYWRIGHT_BROWSERS_PATH="$PLAYWRIGHT_BROWSERS_PATH" PWTEST_SERVER_REGISTRY="$PWTEST_SERVER_REGISTRY" node capture.js
+if [ "$DISPLAY_MODE" = "headed-vnc" ]; then
+  say "🚀 Starting capture (HEADED on virtual display :99 — watch it in your VNC app)..."
+  say "   Fill the form YOURSELF in the VNC window. When the confirmation-code"
+  say "   screen appears, STOP and close the browser."
+  CHROMIUM_PATH="$CHROMIUM_BIN" PLAYWRIGHT_BROWSERS_PATH="$PLAYWRIGHT_BROWSERS_PATH" PWTEST_SERVER_REGISTRY="$PWTEST_SERVER_REGISTRY" DISPLAY=:99 node capture.js --headed
+else
+  say "🚀 Starting capture..."
+  CHROMIUM_PATH="$CHROMIUM_BIN" PLAYWRIGHT_BROWSERS_PATH="$PLAYWRIGHT_BROWSERS_PATH" PWTEST_SERVER_REGISTRY="$PWTEST_SERVER_REGISTRY" node capture.js
+fi
 EXIT=$?
-if [ $EXIT -eq 0 ]; then say "✅ Done. Output in ./out/ (ig_capture.har, requests.jsonl, requests_summary.txt)"; else say "❌ Finished with exit $EXIT. Read the error above — most Termux errors are fixed by: pkg install chromium"; fi
+if [ $EXIT -eq 0 ]; then say "✅ Done. Output in ./out/ (ig_capture.har, requests.jsonl, requests_summary.txt)"; else say "❌ Finished with exit $EXIT. Read the error above."; fi
 exit $EXIT

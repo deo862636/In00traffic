@@ -70,6 +70,23 @@ bash setup.sh
 
 ## 🛠️ Troubleshooting (Termux)
 
+### Why does it keep erroring, again and again?
+Because each fix peels off one layer, and the next layer underneath is a *different* problem. It was never the same error repeating:
+1. First, `setup.sh` didn't fetch the project files and tried to download a Playwright browser on Android (impossible).
+2. Then Playwright itself threw `Unsupported platform: android` when loading, because Node on Termux reports the platform as `android`.
+3. Then Chromium *launched* but died, because a headed browser needs a screen and Termux has none — `Missing X server or $DISPLAY`.
+
+The `inotify` / `dbus` lines in the log are harmless warnings, not the cause. The one line that matters is `Missing X server or $DISPLAY` / `The platform failed to initialize`.
+
+### "Missing X server or $DISPLAY" — the fix
+Termux is a terminal, it has no screen. A headed browser has nowhere to draw, so it exits. `setup.sh` now fixes this by starting a **virtual display (Xvfb on :99)** plus **VNC**, so you can *see* the browser:
+1. Install a free VNC viewer app on your phone — for example **AVNC** from the Play Store.
+2. Run the one-command setup. It starts Xvfb + VNC and prints the address.
+3. In the VNC app, connect to **`localhost:5901`** (password = the one you set when VNC first started).
+4. You will see the Chromium window there. Fill the form in it yourself.
+
+If the virtual display cannot start, the script does **not** crash anymore — it runs **headless** instead and captures the page load only, and tells you so.
+
 **"Unsupported platform: android"**
 Playwright cannot download its own Chromium on Android — that error is expected if a script tries `npx playwright install chromium`. This project never does that on Termux. It uses the system Chromium instead (`pkg install chromium`). If you see this error, update the repo (`git pull`) and run `setup.sh` again.
 
