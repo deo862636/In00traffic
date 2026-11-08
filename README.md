@@ -23,19 +23,26 @@
 
 ## 🚀 One-command setup (zero to complete)
 
-Pick your device. **One command, it installs everything missing and starts the capture.**
+**Beginner? Just do this — one command, nothing else to install first.**
 
-### 📱 Termux (Android)
+### 📱 Termux (Android) — start here
+
+Open Termux and paste this **one line**:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/deo862636/In00traffic/main/setup.sh | bash
 ```
 
-Or, if you already cloned the repo:
+That's it. The script will:
+1. 📥 Download the project files for you (you don't need to clone anything)
+2. ✅ Check Node.js — install it if missing
+3. 📦 Install Chromium — the browser the capture uses
+4. 📦 Install `playwright-core` inside the project folder
+5. 🚀 Start the capture — a browser window opens
 
-```bash
-bash setup.sh
-```
+Then **you** fill in the form, solve any CAPTCHA, and click Submit yourself. When the confirmation-code screen appears, **stop** and close the browser.
+
+> **If you already cloned the repo**, just run `bash setup.sh` inside the `In00traffic` folder instead.
 
 ### 🍎 macOS
 
@@ -58,6 +65,27 @@ Use **WSL** (Windows Subsystem for Linux), then run the Linux command above. Or 
 ```bash
 bash setup.sh
 ```
+
+---
+
+## 🛠️ Troubleshooting (Termux)
+
+**"Unsupported platform: android"**
+Playwright cannot download its own Chromium on Android — that error is expected if a script tries `npx playwright install chromium`. This project never does that on Termux. It uses the system Chromium instead (`pkg install chromium`). If you see this error, update the repo (`git pull`) and run `setup.sh` again.
+
+**"capture.js is missing from this folder"**
+You ran `setup.sh` alone without the other project files (for example, with `curl | bash` on the old version). The fixed `setup.sh` downloads the project files itself, so just run the one-command setup again.
+
+**"No system Chromium" / "No Chromium found"**
+Run these two commands, then run `setup.sh` again:
+```bash
+pkg install chromium
+which chromium
+```
+The second command should print a path like `/data/data/com.termux/files/usr/bin/chromium`. If it prints nothing, Chromium didn't install — check your internet and try `pkg update` first.
+
+**Browser opens but nothing loads / page is blank**
+Make sure you are on Wi-Fi or mobile data, then close the browser and run `node capture.js` again.
 
 ---
 

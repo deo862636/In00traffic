@@ -23,6 +23,15 @@
 // Usage:
 //   node capture.js
 //   node capture.js --out out
+//   CHROMIUM_PATH=/path/to/chromium node capture.js
+//   node capture.js --chromium /path/to/chromium
+//
+// Browser: Playwright CANNOT download its own Chromium on Android/Termux
+// ("Unsupported platform: android"), so on Termux we MUST use the system
+// Chromium from `pkg install chromium`. setup.sh finds it and sets
+// CHROMIUM_PATH for you. If you run capture.js by hand on Termux and it
+// says "no Chromium found", run: pkg install chromium && which chromium
+// and then: CHROMIUM_PATH=$(which chromium) node capture.js
 //
 // Then, in the browser window:
 //   1. Fill in the signup form yourself.
@@ -42,16 +51,56 @@
 const { chromium } = require('playwright-core');
 const fs = require('fs');
 const path = require('path');
+const { execSync } = require('child_process');
 
 const args = process.argv.slice(2);
 let outDir = './out';
+let chromiumPath = process.env.CHROMIUM_PATH || '';
 for (let i = 0; i < args.length; i++) {
   if (args[i] === '--out') outDir = args[++i];
+  if (args[i] === '--chromium') chromiumPath = args[++i];
   if (args[i] === '--help' || args[i] === '-h') {
-    console.log('Usage: node capture.js [--out <dir>]\n\nOpens Instagram signup in Chromium with HAR recording.\nYOU fill the form, solve any CAPTCHA, and submit it yourself.\nThe script only records network traffic and stops at the OTP screen.');
+    console.log('Usage: node capture.js [--out <dir>] [--chromium <path>]\n\nOpens Instagram signup in Chromium with HAR recording.\nYOU fill the form, solve any CAPTCHA, and submit it yourself.\nThe script only records network traffic and stops at the OTP screen.\n\nOn Termux/Android, set CHROMIUM_PATH to your system Chromium:\n  CHROMIUM_PATH=$(which chromium) node capture.js');
     process.exit(0);
   }
 }
+
+// Find a system Chromium, the same way `which chromium` does.
+// Playwright's own browser download does NOT work on Android, so a
+// system Chromium is required there — never silently fall back to a
+// download that will fail with "Unsupported platform: android".
+function findChromium() {
+  if (chromiumPath && fs.existsSync(chromiumPath)) return chromiumPath;
+  for (const name of ['chromium', 'chromium-browser', 'google-chrome', 'google-chrome-stable']) {
+    try {
+      const p = execSync(`command -v ${name}`, { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
+      if (p) return p;
+    } catch { /* not found, try next */ }
+  }
+  const candidates = [
+    process.env.PREFIX ? `${process.env.PREFIX}/bin/chromium` : '',
+    process.env.PREFIX ? `${process.env.PREFIX}/bin/chromium-browser` : '',
+    '/data/data/com.termux/files/usr/bin/chromium',
+    '/data/data/com.termux/files/usr/bin/chromium-browser',
+    '/usr/bin/chromium', '/usr/bin/chromium-browser', '/usr/bin/google-chrome',
+  ];
+  for (const p of candidates) if (p && fs.existsSync(p)) return p;
+  return '';
+}
+const foundChromium = findChromium();
+const isAndroid = process.platform === 'android' || !!process.env.TERMUX_VERSION || fs.existsSync('/data/data/com.termux/files/usr');
+if (!foundChromium && isAndroid) {
+  console.error('');
+  console.error('❌ ERROR: No system Chromium found, and Playwright cannot download');
+  console.error('   its own Chromium on Android ("Unsupported platform: android").');
+  console.error('');
+  console.error('   Fix it with these 2 commands, then run this script again:');
+  console.error('     pkg install chromium');
+  console.error('     CHROMIUM_PATH=$(which chromium) node capture.js');
+  console.error('');
+  process.exit(1);
+}
+if (foundChromium) console.log('Using browser:', foundChromium);
 fs.mkdirSync(outDir, { recursive: true });
 
 function redactHeaders(h) {
@@ -68,6 +117,7 @@ function redactHeaders(h) {
 
   const browser = await chromium.launch({
     headless: false, // headed on purpose: YOU need to see the browser to fill it in
+    executablePath: foundChromium || undefined, // system Chromium on Termux/Android; Playwright's own elsewhere
     args: ['--no-sandbox', '--disable-gpu', '--disable-dev-shm-usage'],
   });
   const context = await browser.newContext({
