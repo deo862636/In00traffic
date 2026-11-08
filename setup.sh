@@ -128,6 +128,15 @@ fi
 export CHROMIUM_PATH="$CHROMIUM_BIN"
 say "📌 Using browser: $CHROMIUM_BIN"
 
+# FIX FOR TERMUX / ANDROID: Playwright throws "Unsupported platform: android"
+# when it works out its default cache folder (Node reports platform android).
+# These two folders make it use a normal path instead. capture.js sets the
+# same two as a safety net, but exporting them here covers every launch.
+export PLAYWRIGHT_BROWSERS_PATH="${PLAYWRIGHT_BROWSERS_PATH:-$HOME/.cache/ms-playwright}"
+export PWTEST_SERVER_REGISTRY="${PWTEST_SERVER_REGISTRY:-$HOME/.cache/ms-playwright/b}"
+mkdir -p "$PLAYWRIGHT_BROWSERS_PATH" "$PWTEST_SERVER_REGISTRY" 2>/dev/null || true
+say "📌 Playwright cache: $PLAYWRIGHT_BROWSERS_PATH"
+
 # --- 3. playwright-core (inside THIS folder, not in your home folder) --------
 if [ -d node_modules/playwright-core ]; then
   say "✅ playwright-core already installed."
@@ -159,7 +168,7 @@ if [ "$INSTALL_ONLY" = "1" ]; then say "✅ Install only — done. Run with: nod
 
 say "🚀 Starting capture (headed browser — YOU fill the form)..."
 say "   When the confirmation-code screen appears, STOP and close the browser."
-CHROMIUM_PATH="$CHROMIUM_BIN" node capture.js
+CHROMIUM_PATH="$CHROMIUM_BIN" PLAYWRIGHT_BROWSERS_PATH="$PLAYWRIGHT_BROWSERS_PATH" PWTEST_SERVER_REGISTRY="$PWTEST_SERVER_REGISTRY" node capture.js
 EXIT=$?
 if [ $EXIT -eq 0 ]; then say "✅ Done. Output in ./out/ (ig_capture.har, requests.jsonl, requests_summary.txt)"; else say "❌ Finished with exit $EXIT. Read the error above — most Termux errors are fixed by: pkg install chromium"; fi
 exit $EXIT

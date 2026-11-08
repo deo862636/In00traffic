@@ -76,6 +76,12 @@ Playwright cannot download its own Chromium on Android — that error is expecte
 **"capture.js is missing from this folder"**
 You ran `setup.sh` alone without the other project files (for example, with `curl | bash` on the old version). The fixed `setup.sh` downloads the project files itself, so just run the one-command setup again.
 
+**"Unsupported platform: android" (when the capture starts)**
+This is Playwright itself, not the download step. On Termux, Node reports the platform as `android`, and Playwright throws when it works out its default cache folder. The fix is already in `capture.js` and `setup.sh`: they set `PLAYWRIGHT_BROWSERS_PATH` and `PWTEST_SERVER_REGISTRY` to folders under your home directory before Playwright loads. If you run `capture.js` by hand, run it like this instead:
+```bash
+PLAYWRIGHT_BROWSERS_PATH=$HOME/.cache/ms-playwright PWTEST_SERVER_REGISTRY=$HOME/.cache/ms-playwright/b CHROMIUM_PATH=$(which chromium) node capture.js
+```
+
 **"No system Chromium" / "No Chromium found"**
 Run these two commands, then run `setup.sh` again:
 ```bash

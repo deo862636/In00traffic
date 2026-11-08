@@ -48,9 +48,30 @@
 //
 // Privacy: the HAR contains session cookies. Keep it private, do not share it.
 
-const { chromium } = require('playwright-core');
+// FIX FOR TERMUX / ANDROID — must run BEFORE requiring playwright-core.
+// On Termux, Node reports process.platform === 'android', and Playwright's
+// registry code throws "Unsupported platform: android" when it tries to
+// work out its default cache folder. Setting these two env vars makes
+// Playwright use a normal folder instead, and it never hits that throw:
+//   PLAYWRIGHT_BROWSERS_PATH — where Playwright keeps its browser registry
+//   PWTEST_SERVER_REGISTRY   — where its browser-server registry lives
+// setup.sh exports both for you; this block is the safety net if you run
+// capture.js by hand. Proven: without them, require('playwright-core')
+// throws on Android; with them, it loads fine.
 const fs = require('fs');
 const path = require('path');
+const os = require('os');
+if (!process.env.PLAYWRIGHT_BROWSERS_PATH) {
+  process.env.PLAYWRIGHT_BROWSERS_PATH = path.join(os.homedir(), '.cache', 'ms-playwright');
+}
+if (!process.env.PWTEST_SERVER_REGISTRY) {
+  process.env.PWTEST_SERVER_REGISTRY = path.join(os.homedir(), '.cache', 'ms-playwright', 'b');
+}
+for (const d of [process.env.PLAYWRIGHT_BROWSERS_PATH, process.env.PWTEST_SERVER_REGISTRY]) {
+  try { fs.mkdirSync(d, { recursive: true }); } catch { /* ignore */ }
+}
+
+const { chromium } = require('playwright-core');
 const { execSync } = require('child_process');
 
 const args = process.argv.slice(2);
